@@ -1,0 +1,952 @@
+---
+title: "Power Analyses LGCM and Multilevel models"
+format: html
+editor: visual
+toc: true
+toc-title: "Contents"
+toc-expand: true
+---
+
+```{r}
+# initialize renv
+renv::init()
+```
+
+```{r}
+#| warning: false
+#| include: false
+#| output: false
+### Installing All Required Packages
+#install.packages(c("haven", "tidyr", "dplyr", "lme4", "lemrTest", "MASS", "lavaan", "ggplot2", "progress"))
+  # Run once if packages are not installed
+
+### Loading Required Packages
+library(haven)
+library(tidyr)
+library(dplyr)
+library(lme4)
+library(lmerTest)
+library(MASS)
+library(lavaan)
+library(ggplot2)
+library(progress)
+```
+
+Title: Power Analyses LGCM\
+Author: A. Bouma\
+Date (dd/mm/yyyy): 11/06/2025\
+License: CC-By Attribution 4.0 International License
+
+### Note
+
+This document was developed as a consulting project for an ongoing study. The contents of this document have been modified to facilitate the sharing of this script for the purpose of applying for a volunteer spot for the Psychological Science REPEAT Network. Code snippets written by other authors (which includes other options for modeling the data), and text referring to the literature and/or research questions of the ongoing project have been removed.
+
+# Introduction
+
+In this report, we will investigate various modeling options for using the available data to investigate if \[..*variables..*\] change over time in adolescents. To this aim, various power analyses have been conducted. Please note that these power analyses have been run without consulting the existing data. Therefore, these power analyses can be interpreted as if the data were not collected yet, and are thus a-priori power analyses.
+
+## Contents of this document
+
+First, we will explain the parameter settings that have been used to generate the power for the different modeling options. First for the case in which only a linear slope is assumed, and then for the case in which also a quadratic slope is assumed.
+
+Then, we will evaluate different modeling options and provide conclusions and recommendations based on these analyses.
+
+## Parameter Settings Linear Slope Only
+
+For all models that are applied to data in which we assume only a linear effect, the following parameters are used as input:
+
+Intercept = 1.42\
+Slope = 0.036\
+Variance of the intercept = 0.6\
+Variance of the slope = 0.1\
+Covariance intercept & slope = -0.1\
+\
+Number of timepoints = 5\
+Sample size = 160
+
+#### Setting parameters based on literature and inspecting them
+
+In this block of code the population model is specified using the parameters that we set. This block of code results in a plot that was used to evaluate if the set parameters are realistic.
+
+```{r}
+#| echo: true
+#| warning: false
+
+# The population model with parameters from which data will be simulated
+model_population <- "
+    # Latent variables
+    int =~ 1*y0 + 1*y1 + 1*y2 + 1*y3 + 1*y4
+    slp =~ 0*y0 + 1*y1 + 2*y2 + 3*y3 + 4*y4
+
+    # Variances
+    int ~~ 0.6*int
+    slp ~~ 0.1*slp
+
+    # Covariances
+    int ~~ -0.1*slp
+
+    # Means
+    int ~ 1.42*1
+    slp ~ 0.036*1
+
+    y0 ~~ res*y0
+    y1 ~~ res*y1
+    y2 ~~ res*y2
+    y3 ~~ res*y3
+    y4 ~~ res*y4
+"
+
+# Define the sample size.
+sample_size <- 160
+
+# Set seed for reproducibility
+set.seed(12345678)
+
+# Data is simulated from the population model here
+# The population growth curve model is then fitted to the data so we can plot
+# what it looks like.
+data <- simulateData(model = model_population, sample.nobs = sample_size)
+
+fit <- growth(model_population, data = data)
+
+# ---- Plot the simulated data to check if the specified parameters make sense ---#
+
+# Extract mean trajectory
+mean_intercept <- parameterestimates(fit)[14,5]
+mean_slope <- parameterestimates(fit)[15,5]
+pred_df <- data.frame(time = 0:4, y_pred = mean_intercept + mean_slope * 0:4)
+
+# Extract individual trajectories
+individual_effects <- lavPredict(fit, type = "lv") %>% 
+  as.data.frame() %>%
+  mutate(id = 1:nrow(.))
+
+# Plot individual and mean trajectories
+sample_ids <- sample(individual_effects$id, sample_size, replace = FALSE)
+individual_traj <- expand.grid(id = sample_ids, time = 0:4) %>%
+  left_join(individual_effects, by = "id") %>%
+  mutate(y_pred = int + slp * time)
+
+ggplot(individual_traj, aes(x = time, y = y_pred, group = id)) +
+  ylim(-2, 5) +
+  geom_line(alpha = 0.6, color = "gray") +
+  geom_line(data = pred_df, aes(x = time, y = y_pred), 
+            inherit.aes = FALSE, linewidth = 1.5, color = "red") +
+  labs(title = "Individual Trajectories (Subset) + Mean (Red)", 
+       x = "Time", y = "Outcome") +
+  theme_minimal()
+
+```
+
+## Parameter Settings Linear and Quadratic Slope
+
+For the model with the quadratic slope added, we use the following parameters. The effect of which can be visually inspected in the plot generated in the following codeblock:
+
+**Fixed effects\
+**Intercept = 1.42\
+Linear Slope = 0.036 \
+Quadratic slope = 0.03
+
+**Random effects**\
+Variance of the intercept = 0.6\
+Variance of the linear slope = 0.1\
+Variance of the quadratic slope = 0.001
+
+**Covariances**\
+Cov intercept & linear slope = -0.1\
+Cov intercept & quadratic slope = -0.03\
+Cov linear slope & quadratic slope = 0.005\
+\
+Number of timepoints = 5\
+Sample size = 160
+
+```{r}
+#| echo: true
+#| warning: false
+
+# Specify the population model from which data is simulated
+# This model has fixed population parameters based on our parameter input
+model_population <- "
+    # Latent variables defined with fixed loadings
+    int =~ 1*y0 + 1*y1 + 1*y2 + 1*y3 + 1*y4
+    slp =~ 0*y0 + 1*y1 + 2*y2 + 3*y3 + 4*y4
+    qdr =~ 0*y0 + 1*y1 + 4*y2 + 9*y3 + 16*y4
+
+    # Variances with specified population values
+    int ~~ 0.6*int
+    slp ~~ 0.1*slp
+    qdr ~~ 0.001*qdr # Population variance for qdr
+
+    # Covariances with specified population values
+    int ~~ -0.1*slp
+    int ~~ -0.03*qdr # Population covariance int-qdr
+    qdr ~~ 0.005*slp # Population covariance qdr-slp
+
+    # Means with specified population values
+    int ~ 1.42*1
+    slp ~ 0.036*1
+    qdr ~ 0.03*1 # Population mean for qdr
+
+    # Constrain residual variance to be equal across timepoints
+    y0 ~~ res*y0
+    y1 ~~ res*y1
+    y2 ~~ res*y2
+    y3 ~~ res*y3
+    y4 ~~ res*y4
+"
+
+# Define the sample size for the plot
+sample_size <- 160
+
+# Set seed for reproducibility (so it is the same for all plots across models)
+set.seed(12345678)
+
+# Generate data from the population model
+data <- simulateData(model = model_population, sample.nobs = sample_size)
+
+# Fit the unconstrained growth model to the simulated data
+fit <- growth(model_population, data = data) # Use the 'model' here, not 'model_population'
+
+# ----  Plot Results to check if our parameters make sense -----------#
+
+# Check if the model fit was successful and converged
+if (lavInspect(fit, "converged")) {
+
+    # Extract mean trajectory parameters from the fitted model
+    mean_params <- parameterEstimates(fit)
+
+    # Find the estimated means using their labels and operator
+    mean_intercept <- mean_params[mean_params$op == "~1" & mean_params$lhs == "int", "est"]
+    mean_slope <- mean_params[mean_params$op == "~1" & mean_params$lhs == "slp", "est"]
+    mean_quadratic <- mean_params[mean_params$op == "~1" & mean_params$lhs == "qdr", "est"]
+
+    # Check if all mean parameters were successfully extracted
+    if (length(mean_intercept) > 0 && length(mean_slope) > 0 && length(mean_quadratic) > 0) {
+
+        # Create data frame for the mean trajectory
+        # Calculate predicted y using the quadratic formula: mean_intercept + mean_slope*time + mean_quadratic*time^2
+        pred_df <- data.frame(time = 0:4,
+                              y_pred = mean_intercept + mean_slope * 0:4 + mean_quadratic * (0:4)^2)
+
+
+        # Extract individual latent variable scores (empirical Bayes estimates)
+        individual_effects <- lavPredict(fit, type = "lv") %>%
+            as.data.frame() %>%
+            mutate(id = 1:nrow(.))
+
+        # Individual trajectories (subset) and the mean trajectory
+
+        # Select a subset of individuals to plot for clarity
+        # Using sample_size here plots all individuals, which might be too crowded.
+        # Let's sample 20 individuals as suggested in the original comment.
+        sample_ids <- sample(individual_effects$id, min(160, sample_size), replace = FALSE) 
+        # Create data frame for individual trajectories
+        # Calculate predicted y using the quadratic formula for each individual: int_i + slp_i*time + qdr_i*time^2
+        individual_traj <- expand.grid(id = sample_ids, time = 0:4) %>%
+            left_join(individual_effects, by = "id") %>%
+            mutate(y_pred = int + slp * time + qdr * time^2) # Updated formula
+
+        # Plot individual trajectories (subset) and the mean trajectory
+        ggplot(individual_traj, aes(x = time, y = y_pred, group = id)) +
+          ylim(-2, 5) +
+            geom_line(alpha = 0.6, color = "gray") + # Individual lines
+            geom_line(data = pred_df, aes(x = time, y = y_pred),
+                      inherit.aes = FALSE, size = 1.5, color = "red") + # Mean line
+            labs(title = "Individual Trajectories (Subset) + Mean (Red)",
+                 x = "Time", y = "Outcome") +
+            theme_minimal()
+
+    } else {
+        # Print a message if mean parameters were not found
+        message("Could not extract all mean parameters (intercept, slope, quadratic) from the fitted model.")
+    }
+
+} else {
+    # Print a message if the model did not converge
+    message("Model fitting did not converge. Cannot plot trajectories.")
+}
+```
+
+To summarize, in this section, we have evaluated the parameter setting that we will use for the power analyses. These will now be used to calculate the power for various modeling options.
+
+# (1.) Linear Latent Growth Curve Model
+
+An almost equivalent model to the 2-level multilevel model specified above for data in which we assume only a linear effect, is the latent growth curve model. Here, we evaluate the power of this model for which we specify both fixed and random effects for the intercept and slope.
+
+For this model, it makes sense to calculate the power twice. We want to know if we have enough power to detect the fixed effect of Donating Behavior over time and the variance of that effect. First, we will calculate the power for the fixed effect, while allowing for the random effect too.
+
+```{r}
+#| echo: true
+#| warning: false
+# The model that will be fitted to the data is specified here
+model <- "
+    # Latent variables
+    int =~ 1*y0 + 1*y1 + 1*y2 + 1*y3 + 1*y4
+    slp =~ 0*y0 + 1*y1 + 2*y2 + 3*y3 + 4*y4 #lin slope equally spaced timepoints
+
+    # Variances
+    int ~~ int
+    slp ~~ slp
+
+    # Covariances
+    int ~~ slp
+
+    # Means
+    int ~ 1
+    slp ~ 1
+    
+    # Residual variances constrained to be equal over time
+    y0 ~~ res*y0
+    y1 ~~ res*y1
+    y2 ~~ res*y2
+    y3 ~~ res*y3
+    y4 ~~ res*y4
+"
+
+# The population model with parameters from which data will be simulated
+model_population <- "
+    # Latent variables
+    int =~ 1*y0 + 1*y1 + 1*y2 + 1*y3 + 1*y4
+    slp =~ 0*y0 + 1*y1 + 2*y2 + 3*y3 + 4*y4
+
+    # Variances
+    int ~~ 0.6*int
+    slp ~~ 0.1*slp
+
+    # Covariances
+    int ~~ -0.1*slp
+
+    # Means
+    int ~ 1.42*1
+    slp ~ 0.036*1
+
+    y0 ~~ res*y0
+    y1 ~~ res*y1
+    y2 ~~ res*y2
+    y3 ~~ res*y3
+    y4 ~~ res*y4
+"
+```
+
+## Power for the fixed effect of linear slope
+
+First, we will define when the model fits the data well. We define the function 'has_good_fit'. Here, the function is defined as such that each time we find a significant effect for the fixed effect of the linear slope, it is counted as being a good fit. We can say this because when we generate the data, we made sure that there is a linear slope. The question is, how many participants should we have in our Latent Growth Curve Model in order for the model to systematically detect this effect?
+
+First, we define the function to evaluate good model fit. Next we define the function that will simulate a dataset and fit our model to this data. We can later use these functions to make a lot of datasets and try to fit the model with a range of different sample sizes.
+
+```{r}
+#| echo: true
+#| warning: false
+
+# Version for mean effect of the slope
+has_good_fit <- function(parameters) {
+  # Extract the p-value.
+  p_value <- parameters[
+    parameters$op == "~1" &
+      parameters$lhs == "slp" &
+      parameters$rhs == "",
+    "pvalue"
+  ]
+  
+  # If the p-value is less than `0.05`.
+  if (p_value < 0.05) {
+    return(1)
+  } else {
+    return(0)
+  }
+}
+
+# Define a function to run the simulation for a single sample size.
+run_simulation <- function(sample_size) {
+  
+  # Attempt to fit the model.
+    output <- tryCatch(
+        expr = {
+        
+            # Simulate data.
+            data <- lavaan::simulateData(model_population, sample.nobs = sample_size)
+
+            # Fit the model.
+            fit <- growth(model, data = data)
+
+            # Extract the parameters.
+            parameters <- parameterEstimates(fit)
+
+            # Evaluate the model fit.
+            result <- has_good_fit(parameters)
+
+            # Return the result.
+            return(result)
+        },
+
+        # In case of during the data generation process, estimation, or evaluation.
+        error = function(e) {
+            # Return `NA` (i.e., a missing value).
+            return(NA)
+        }
+    )
+
+    # Return the result.
+    return(output)
+}
+```
+
+Now that the functions that we need are defined, we will define the range of sample sizes we want to evaluate the model on and the number of times we want to try the model on a dataset for each of these sample sizes. We will try sample sizes between 50 and 600 with steps of 25, giving 22 different sample sizes. Each of these sample sizes is used to generate data 100 times. So in total, we will generate 2200 datasets.
+
+```{r}
+#| echo: true
+#| warning: false
+# Define a range of sample sizes.
+sample_sizes <- seq(50, 600, by = 25)
+
+# Define the number of replications.
+replications <- 100
+
+# Run the simulation for each sample size selected
+results <- sapply(sample_sizes, function(sample_size) {
+  
+    # For each sample size, replicate the simulation.
+    result <- replicate(
+        # How many times to replicate the simulation.
+        n = replications,
+
+        # The expression to replicate (i.e., our simulation function)
+        expr = {
+            # Increment the progress bar.
+            #bar$tick()
+
+            # Run the simulation function.
+            run_simulation(sample_size)
+        }
+    )
+    # Return the result.
+    return(result)
+})
+
+# Once we are done with the simulation, also remove the progress bar.
+#rm(bar)
+
+# Add the column names to the results for clarity.
+colnames(results) <- sample_sizes
+
+# Add the row names to the results for clarity.
+rownames(results) <- 1:replications
+
+# Take the column means.
+results_means <- colMeans(results, na.rm = TRUE)
+
+
+# Prepare the data.
+data <- data.frame(
+    sample_size = sample_sizes,
+    proportion_good_fit = results_means
+)
+
+```
+
+Now that we've run the simulations, and stored our results, we will plot the results in a graph to see how many participants we will need for our specified effect sizes to be sure that we can retrieve a significant result for the fixed effect of the linear slope. In other words, given that there is a linear slope in the population as we specified, how many people do we need to be fairly sure that we will also find it in our data with the model we specified?
+
+```{r}
+#| echo: true
+#| warning: false
+# Plot the results.
+ggplot(data, aes(x = sample_size, y = proportion_good_fit)) +
+    # Plot the line.
+    geom_line(
+        color = "gray",
+        linewidth = 1.5
+    ) +
+
+    # Add vertical lines from the points to each sample size on the x-axis.
+    geom_segment(
+        aes(xend = sample_size, yend = 0),
+        color = "black",
+        linetype = "dotted",
+        linewidth = 0.3
+    ) +
+
+    # Add the point values.
+    geom_point(
+        linewidth = 2.5
+    ) +
+
+    # Add a horizontal line at 0.8.
+    geom_hline(
+        yintercept = 0.8,
+        linetype = "dashed",
+        color = "darkred"
+    ) +
+
+    # Restrict the y-axis.
+    scale_y_continuous(
+        limits = c(0, 1),
+        breaks = seq(0, 1, by = 0.1)
+    ) +
+
+    # Add x-axis labels.
+    scale_x_continuous(
+        breaks = sample_sizes
+    ) +
+
+    # Lab names.
+    labs(
+        title = paste0("Proportion of \"Good Fit\" by Sample Size (based on ", replications, " replications)"),
+        x = "Sample Size",
+        y = "Proportion of Good Fit"
+    ) +
+
+    # Set the main theme.
+    theme_bw() +
+
+    # Adjust the theme.
+    theme(
+        # Increase font size of the labels.
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+
+        # Hide major grid.
+        panel.grid.major = element_blank(),
+
+        # Rotate the x-axis labels.
+        axis.text.x = element_text(angle = 45, hjust = 1),
+
+        # Add some space between the plot and the labels.
+        axis.title.y = element_text(
+            margin = margin(t = 0, r = 5, b = 0, l = 0)
+        ),
+        axis.title.x = element_text(
+            margin = margin(t = 15, r = 0, b = 0, l = 0)
+        )
+    )
+```
+
+### Conclusion LGCM fixed effect linear slope power
+
+Here we see that for a sample size of 600, the power we reach is just above 0.5. Therefore, we can conclude that the effect size we expect in the data is too small to detect with the available sample size of \~160.
+
+## Power for the variance of linear slope
+
+But we are not just interested in the fixed effect of the slope. We also want to know if the slope varies between individuals. Therefore, we will see how much power we have for detecting this effect.
+
+Again, we will define when the model fits the data well. We define the function 'has_good_fit'. Here, the function is defined as such that each time we find a significant effect for the random effect of the linear slope, it is counted as being a good fit. We can say this because when we generate the data, we made sure that there indeed is variance in the linear slope. The question is, how many participants should we have in our Latent Growth Curve Model in order for the model to systematically detect this effect?
+
+So here, we redefine the has_good_fit function to test for the variance of the linear slope instead of the fixed effect.
+
+```{r}
+#| echo: true
+#| warning: false
+
+# Version for mean effect of the slope
+has_good_fit <- function(parameters) {
+  # Extract the p-value.
+  p_value <- parameters[
+    parameters$op == "~~" &
+      parameters$lhs == "slp" &
+      parameters$rhs == "slp",
+    "pvalue"
+  ]
+  
+  # If the p-value is less than `0.05`.
+  if (p_value < 0.05) {
+    return(1)
+  } else {
+    return(0)
+  }
+}
+```
+
+Now that the functions that we need are defined, we will define the range of sample sizes we want to evaluate the model on and the number of times we want to try the model on a dataset for each of these sample sizes. We will try sample sizes between 50 and 200 with steps of 5, giving 31 different sample sizes. Each of these sample sizes is used to generate data 100 times. So in total, we will generate 3100 datasets. The range of sample sizes is different here, because we expect to need somewhat less people to have enough power to detect the variance effect.
+
+```{r}
+#| echo: true
+#| warning: false
+# Define a range of sample sizes.
+sample_sizes <- seq(50, 200, by = 5)
+
+# Define the number of replications.
+replications <- 100
+
+# Run the simulation for each sample size selected
+results <- sapply(sample_sizes, function(sample_size) {
+  
+    # For each sample size, replicate the simulation.
+    result <- replicate(
+        # How many times to replicate the simulation.
+        n = replications,
+
+        # The expression to replicate (i.e., our simulation function)
+        expr = {
+            # Increment the progress bar.
+            #bar$tick()
+
+            # Run the simulation function.
+            run_simulation(sample_size)
+        }
+    )
+    # Return the result.
+    return(result)
+})
+
+# Once we are done with the simulation, also remove the progress bar.
+#rm(bar)
+
+# Add the column names to the results for clarity.
+colnames(results) <- sample_sizes
+
+# Add the row names to the results for clarity.
+rownames(results) <- 1:replications
+
+# Take the column means.
+results_means <- colMeans(results, na.rm = TRUE)
+
+
+# Prepare the data.
+data <- data.frame(
+    sample_size = sample_sizes,
+    proportion_good_fit = results_means
+)
+
+```
+
+Now that we've run the simulations, and stored our results, we will plot the results in a graph to see how many participants we will need for our specified effect sizes to be sure that we can retrieve a significant result for the random effect of the linear slope. In other words, given that there is variation in the linear slope in the population as we specified, how many people do we need to be fairly sure that we will also find it in our data with the model we specified?
+
+```{r}
+#| echo: true
+#| warning: false
+# Plot the results.
+ggplot(data, aes(x = sample_size, y = proportion_good_fit)) +
+    # Plot the line.
+    geom_line(
+        color = "gray",
+        linewidth = 1.5
+    ) +
+
+    # Add vertical lines from the points to each sample size on the x-axis.
+    geom_segment(
+        aes(xend = sample_size, yend = 0),
+        color = "black",
+        linetype = "dotted",
+        linewidth = 0.3
+    ) +
+
+    # Add the point values.
+    geom_point(
+        linewidth = 2.5
+    ) +
+
+    # Add a horizontal line at 0.8.
+    geom_hline(
+        yintercept = 0.8,
+        linetype = "dashed",
+        color = "darkred"
+    ) +
+
+    # Restrict the y-axis.
+    scale_y_continuous(
+        limits = c(0, 1),
+        breaks = seq(0, 1, by = 0.1)
+    ) +
+
+    # Add x-axis labels.
+    scale_x_continuous(
+        breaks = sample_sizes
+    ) +
+
+    # Lab names.
+    labs(
+        title = paste0("Proportion of \"Good Fit\" by Sample Size (based on ", replications, " replications)"),
+        x = "Sample Size",
+        y = "Proportion of Good Fit"
+    ) +
+
+    # Set the main theme.
+    theme_bw() +
+
+    # Adjust the theme.
+    theme(
+        # Increase font size of the labels.
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+
+        # Hide major grid.
+        panel.grid.major = element_blank(),
+
+        # Rotate the x-axis labels.
+        axis.text.x = element_text(angle = 45, hjust = 1),
+
+        # Add some space between the plot and the labels.
+        axis.title.y = element_text(
+            margin = margin(t = 0, r = 5, b = 0, l = 0)
+        ),
+        axis.title.x = element_text(
+            margin = margin(t = 15, r = 0, b = 0, l = 0)
+        )
+    )
+```
+
+### Conclusion LGCM random effect linear slope power
+
+Here we see that we would need at least 60 people to have enough power to detect the random effect we specified in our simulation. Therefore, we can conclude that our sample is large enough to detect the random effect of the linear slope.
+
+# (2.) Quadratic Latent Growth Curve Model
+
+Here, we will check if we could have more power to detect the existence of our specified quadratic slope with the LGCM compared to the previously specified multilevel option. However, it would be expected that the outcome will be comparable.
+
+```{r}
+#| echo: true
+#| warning: false
+# Specify the model to be fitted (unconstrained growth model)
+# This model estimates all variances, covariances, and means freely
+model <- "
+    # Latent variables defined with fixed loadings
+    int =~ 1*y0 + 1*y1 + 1*y2 + 1*y3 + 1*y4
+    slp =~ 0*y0 + 1*y1 + 2*y2 + 3*y3 + 4*y4
+    qdr =~ 0*y0 + 1*y1 + 4*y2 + 9*y3 + 16*y4
+
+    # Estimate variances of latent variables
+    int ~~ int
+    slp ~~ slp
+    qdr ~~ qdr
+
+    # Estimate covariances between latent variables
+    int ~~ slp
+    int ~~ qdr
+    qdr ~~ slp
+
+    # Estimate means of latent variables
+    int ~ 1
+    slp ~ 1
+    qdr ~ 1
+
+    # Constrain residual variance to be equal across timepoints
+    y0 ~~ res*y0
+    y1 ~~ res*y1
+    y2 ~~ res*y2
+    y3 ~~ res*y3
+    y4 ~~ res*y4
+"
+
+# Specify the population model from which data is simulated
+# This model has fixed population parameters based on our parameter input
+model_population <- "
+    # Latent variables defined with fixed loadings
+    int =~ 1*y0 + 1*y1 + 1*y2 + 1*y3 + 1*y4
+    slp =~ 0*y0 + 1*y1 + 2*y2 + 3*y3 + 4*y4
+    qdr =~ 0*y0 + 1*y1 + 4*y2 + 9*y3 + 16*y4
+
+    # Variances with specified population values
+    int ~~ 0.6*int
+    slp ~~ 0.1*slp
+    qdr ~~ 0.001*qdr # Population variance for qdr
+
+    # Covariances with specified population values
+    int ~~ -0.1*slp
+    int ~~ -0.03*qdr # Population covariance int-qdr
+    qdr ~~ 0.005*slp # Population covariance qdr-slp
+
+    # Means with specified population values
+    int ~ 1.42*1
+    slp ~ 0.036*1
+    qdr ~ 0.03*1 # Population mean for qdr
+
+    # Constrain residual variance to be equal across timepoints
+    y0 ~~ res*y0
+    y1 ~~ res*y1
+    y2 ~~ res*y2
+    y3 ~~ res*y3
+    y4 ~~ res*y4
+"
+```
+
+We want to know if we can retrieve the average quadratic slope (so the fixed effect for the quadratic slope). Therefore, the 'has_good_fit' function will be adjusted to focus on the p-value for the quadratic slope.
+
+```{r}
+#| echo: true
+#| warning: false
+has_good_fit <- function(parameters) {
+
+    p_value <- parameters[
+        parameters$op == "~1" &
+        parameters$lhs == "qdr" &
+        parameters$rhs == "",
+        "pvalue"
+    ]
+
+    # If the p-value is less than `0.05`.
+    if (length(p_value) > 0 && p_value < 0.05) {
+        return(1)
+    } else {
+        return(0)
+    }
+}
+
+# Define a function to run the simulation for a single sample size.
+run_simulation <- function(sample_size) {
+
+    # Attempt to fit the model.
+    output <- tryCatch(
+        expr = {
+
+            # Simulate data from the population model.
+            data <- lavaan::simulateData(model_population, sample.nobs = sample_size)
+
+            # Fit the unconstrained model to the simulated data.
+            fit <- growth(model, data = data)
+
+            # Check if the model converged before extracting parameters
+            if (lavInspect(fit, "converged")) {
+                 # Extract the parameters.
+                parameters <- parameterEstimates(fit)
+
+                # Evaluate the model fit using the defined criterion.
+                result <- has_good_fit(parameters) # Check power for the specified parameter
+
+                # Return the result (0 or 1).
+                return(result)
+            } else {
+                # Return NA if the model did not converge
+                return(NA)
+            }
+        },
+
+        # In case of errors during data generation, estimation, or evaluation.
+        error = function(e) {
+            # Return `NA` (i.e., a missing value) for failed replications.
+            return(NA)
+        }
+    )
+
+    # Return the result of the simulation attempt.
+    return(output)
+}
+```
+
+Now that we've defined the functions for the power analysis, we will execute the analysis the same way as before. We will change the range of sample sizes a bit, because we expect that we might need a larger sample size for this model.
+
+### Power Analysis
+
+```{r}
+#| echo: true
+#| warning: false
+# Define a range of sample sizes for the power analysis.
+sample_sizes <- seq(50, 2000, by = 50)
+
+# Define the number of replications for each sample size.
+replications <- 100 
+
+# Define a progress bar to track simulation progress.
+#bar <- progress_bar$new(total = length(sample_sizes) * replications)
+
+# Run the simulation for each sample size and replication.
+results <- sapply(sample_sizes, function(sample_size) {
+
+    # For each sample size, replicate the simulation.
+    result <- replicate(
+        # How many times to replicate the simulation.
+        n = replications,
+
+        # The expression to replicate (i.e., our simulation function).
+        expr = {
+            # Increment the progress bar.
+            #bar$tick()
+
+            # Run the simulation function for the current sample size.
+            run_simulation(sample_size)
+        }
+    )
+    # Return the vector of results for this sample size.
+    return(result)
+})
+
+# Once the simulation is complete, remove the progress bar.
+#rm(bar)
+
+# Add column names to the results matrix (sample sizes).
+colnames(results) <- sample_sizes
+
+# Add row names to the results matrix (replication numbers).
+rownames(results) <- 1:replications
+
+# Calculate the proportion of "good fit" (power) for each sample size, ignoring NAs.
+results_means <- colMeans(results, na.rm = TRUE)
+
+# Prepare the data for plotting the power curve.
+data_power_curve <- data.frame(
+    sample_size = sample_sizes,
+    proportion_good_fit = results_means
+)
+
+# Plot the power curve.
+ggplot(data_power_curve, aes(x = sample_size, y = proportion_good_fit)) +
+    # Plot the line connecting the points.
+    geom_line(
+        color = "gray",
+        size = 1.5
+    ) +
+
+    # Add vertical lines from the points to each sample size on the x-axis.
+    geom_segment(
+        aes(xend = sample_size, yend = 0),
+        color = "black",
+        linetype = "dotted",
+        size = 0.3
+    ) +
+
+    # Add the point values.
+    geom_point(
+        size = 2.5
+    ) +
+
+    # Add a horizontal line at the conventional power level (0.8).
+    geom_hline(
+        yintercept = 0.8,
+        linetype = "dashed",
+        color = "darkred"
+    ) +
+
+    # Restrict the y-axis to the range [0, 1] and set breaks.
+    scale_y_continuous(
+        limits = c(0, 1),
+        breaks = seq(0, 1, by = 0.1)
+    ) +
+
+    # Set x-axis breaks to the sample sizes used.
+    scale_x_continuous(
+        breaks = sample_sizes
+    ) +
+
+    # Add labels and title to the plot.
+    labs(
+        title = paste0("Proportion of \"Good Fit\" by Sample Size (based on ", replications, " replications)"),
+        x = "Sample Size",
+        y = "Proportion of Good Fit"
+    ) +
+
+    # Set the plot theme.
+    theme_bw() +
+
+    # Adjust theme elements for better readability.
+    theme(
+        # Increase font size of the axis labels.
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+
+        # Hide major grid lines.
+        panel.grid.major = element_blank(),
+
+        # Rotate the x-axis labels for better readability if they overlap.
+        axis.text.x = element_text(angle = 45, hjust = 1),
+
+        # Add some space between the plot area and the axis titles.
+        axis.title.y = element_text(
+            margin = margin(t = 0, r = 5, b = 0, l = 0)
+        ),
+        axis.title.x = element_text(
+            margin = margin(t = 15, r = 0, b = 0, l = 0)
+        )
+    )
+```
+
+### Conclusions
+
+Here we see that a quadratic slope of this size needs a sample size of at least 750 people to have acceptable power to detect the average quadratic slope.
