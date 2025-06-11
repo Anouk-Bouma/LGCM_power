@@ -17,7 +17,7 @@ renv::init()
 #| include: false
 #| output: false
 ### Installing All Required Packages
-#install.packages(c("haven", "tidyr", "dplyr", "lme4", "lemrTest", "MASS", "lavaan", "ggplot2", "progress"))
+install.packages(c("haven", "tidyr", "dplyr", "lme4", "lmerTest", "MASS", "lavaan", "ggplot2", "progress"))
   # Run once if packages are not installed
 
 ### Loading Required Packages
@@ -251,7 +251,7 @@ if (lavInspect(fit, "converged")) {
           ylim(-2, 5) +
             geom_line(alpha = 0.6, color = "gray") + # Individual lines
             geom_line(data = pred_df, aes(x = time, y = y_pred),
-                      inherit.aes = FALSE, size = 1.5, color = "red") + # Mean line
+                      inherit.aes = FALSE, linewidth = 1.5, color = "red") + # Mean line
             labs(title = "Individual Trajectories (Subset) + Mean (Red)",
                  x = "Time", y = "Outcome") +
             theme_minimal()
