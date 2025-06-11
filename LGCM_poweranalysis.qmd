@@ -8,28 +8,11 @@ toc-expand: true
 ---
 
 ```{r}
-# initialize renv
-renv::init()
-```
+# activate dependencies
+renv::restore()
 
-```{r}
-#| warning: false
-#| include: false
-#| output: false
-### Installing All Required Packages
-install.packages(c("haven", "tidyr", "dplyr", "lme4", "lmerTest", "MASS", "lavaan", "ggplot2", "progress"))
-  # Run once if packages are not installed
-
-### Loading Required Packages
-library(haven)
-library(tidyr)
-library(dplyr)
-library(lme4)
-library(lmerTest)
-library(MASS)
-library(lavaan)
-library(ggplot2)
-library(progress)
+# Set Seed
+set.seed(23041997)
 ```
 
 Title: Power Analyses LGCM\
@@ -99,9 +82,6 @@ model_population <- "
 # Define the sample size.
 sample_size <- 160
 
-# Set seed for reproducibility
-set.seed(12345678)
-
 # Data is simulated from the population model here
 # The population growth curve model is then fitted to the data so we can plot
 # what it looks like.
@@ -144,7 +124,7 @@ For the model with the quadratic slope added, we use the following parameters. T
 
 **Fixed effects\
 **Intercept = 1.42\
-Linear Slope = 0.036 \
+Linear Slope = 0.036\
 Quadratic slope = 0.03
 
 **Random effects**\
@@ -197,9 +177,6 @@ model_population <- "
 
 # Define the sample size for the plot
 sample_size <- 160
-
-# Set seed for reproducibility (so it is the same for all plots across models)
-set.seed(12345678)
 
 # Generate data from the population model
 data <- simulateData(model = model_population, sample.nobs = sample_size)
@@ -834,9 +811,6 @@ sample_sizes <- seq(50, 2000, by = 50)
 # Define the number of replications for each sample size.
 replications <- 100 
 
-# Define a progress bar to track simulation progress.
-#bar <- progress_bar$new(total = length(sample_sizes) * replications)
-
 # Run the simulation for each sample size and replication.
 results <- sapply(sample_sizes, function(sample_size) {
 
@@ -857,9 +831,6 @@ results <- sapply(sample_sizes, function(sample_size) {
     # Return the vector of results for this sample size.
     return(result)
 })
-
-# Once the simulation is complete, remove the progress bar.
-#rm(bar)
 
 # Add column names to the results matrix (sample sizes).
 colnames(results) <- sample_sizes
