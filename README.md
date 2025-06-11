@@ -4,7 +4,7 @@ To run the code, please do take the following steps:
 1. Download the Zipfile to your computer (or fork the repository if that is preferred)
 2. Unpack the Zipfile and open the project file in RStudio (LGCM_power.Rproj)
 3. From the RStudio interface go to the files tab
-4. From the files tab, open the file: LGCM_poweranalysis.qmd
+4. From the files pane in RStudio, open the file: LGCM_poweranalysis.qmd
 5. Run the first codeblock to load the dependencies (needed packages) using renv.
 
 ## Using a Quarto file
