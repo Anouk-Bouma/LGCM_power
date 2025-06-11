@@ -1,5 +1,5 @@
 ---
-title: "Power Analyses LGCM and Multilevel models"
+title: "Power Analyses LGCM"
 format: html
 editor: visual
 toc: true
