@@ -7,10 +7,14 @@ toc-title: "Contents"
 toc-expand: true
 ---
 
+Initialize renv (dependencies)
+
 ```{r}
 # activate dependencies
 renv::restore()
+```
 
+```{r}
 # Set Seed
 set.seed(23041997)
 ```
