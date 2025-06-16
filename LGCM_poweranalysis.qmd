@@ -12,6 +12,16 @@ Initialize renv (dependencies)
 ```{r}
 # activate dependencies
 renv::restore()
+
+library(haven)
+library(tidyr)
+library(dplyr)
+library(lme4)
+library(lmerTest)
+library(MASS)
+library(lavaan)
+library(ggplot2)
+library(progress)
 ```
 
 ```{r}
@@ -404,9 +414,6 @@ results <- sapply(sample_sizes, function(sample_size) {
     return(result)
 })
 
-# Once we are done with the simulation, also remove the progress bar.
-#rm(bar)
-
 # Add the column names to the results for clarity.
 colnames(results) <- sample_sizes
 
@@ -415,7 +422,6 @@ rownames(results) <- 1:replications
 
 # Take the column means.
 results_means <- colMeans(results, na.rm = TRUE)
-
 
 # Prepare the data.
 data <- data.frame(
@@ -568,9 +574,6 @@ results <- sapply(sample_sizes, function(sample_size) {
     return(result)
 })
 
-# Once we are done with the simulation, also remove the progress bar.
-#rm(bar)
-
 # Add the column names to the results for clarity.
 colnames(results) <- sample_sizes
 
@@ -579,7 +582,6 @@ rownames(results) <- 1:replications
 
 # Take the column means.
 results_means <- colMeans(results, na.rm = TRUE)
-
 
 # Prepare the data.
 data <- data.frame(
