@@ -1,4 +1,5 @@
 # LGCM_power
+Before you start, please make sure to have RStudio installed with R 4.4.0 or higher.
 
 To run the code, please do take the following steps:
 1. Download the Zipfile to your computer (or fork the repository if that is preferred)
